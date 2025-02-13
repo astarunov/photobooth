@@ -171,7 +171,7 @@ const Camera: React.FC = () => {
      * - total PDF height = 3×150 + 2×20 + 90 = 580 px
      */
     const pdfWidthPx = 240;
-    const pdfHeightPx = 580;
+    const pdfHeightPx = 600;
 
     // Create jsPDF doc
     const doc = new jsPDF({
@@ -186,7 +186,7 @@ const Camera: React.FC = () => {
     // 1st photo at y=0
     // 2nd photo at y=150 + 20 = 170
     // 3rd photo at y=170 + 150 + 20 = 340
-    const positionsY = [0, 170, 340];
+    const positionsY = [20, 190, 360];
 
     // Add images to PDF
     photos.forEach((photo, i) => {
