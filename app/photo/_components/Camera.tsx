@@ -3,8 +3,29 @@
 import React, { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 
-/** Helper: Convert pixels to mm (approx) for jsPDF. */
+/** Convert pixels to mm (approx) for jsPDF. */
 const pxToMm = (px: number) => px * 0.264583;
+
+/**
+ * Helper to load an image (from public folder) as a base64-encoded dataURL
+ * so we can add it to jsPDF.
+ */
+async function loadImageAsDataURL(path: string): Promise<string> {
+  const res = await fetch(path);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        resolve(e.target.result as string);
+      } else {
+        reject(new Error("Failed to read image data"));
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 const Camera: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -15,6 +36,9 @@ const Camera: React.FC = () => {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isTakingPhotos, setIsTakingPhotos] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  // Store the bottom image (ily.png) as a DataURL after loading
+  const [bottomImageUrl, setBottomImageUrl] = useState<string | null>(null);
 
   /************************************************
    * 1) Initialize Camera (4:3 preview for video) *
@@ -62,6 +86,16 @@ const Camera: React.FC = () => {
     };
   }, []);
 
+  /**
+   * Load the bottom "ily.png" once on mount.
+   * This ensures we have a base64 dataURL ready for the PDF.
+   */
+  useEffect(() => {
+    loadImageAsDataURL("/ily2.png")
+      .then((dataUrl) => setBottomImageUrl(dataUrl))
+      .catch((err) => console.error("Failed to load bottom image:", err));
+  }, []);
+
   /********************************************
    * 2) Capture a single 400×300 photo (4:3)  *
    ********************************************/
@@ -72,7 +106,7 @@ const Camera: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    // Desired final photo: 400 × 300 (to maintain 4:3 for your local usage)
+    // Desired final photo: 400 × 300 (4:3)
     const TARGET_WIDTH = 400;
     const TARGET_HEIGHT = 300;
     canvas.width = TARGET_WIDTH;
@@ -90,7 +124,7 @@ const Camera: React.FC = () => {
 
     // Crop to maintain 4:3
     if (videoAspect > targetAspect) {
-      // Video is wider; crop the sides
+      // Video is wider; crop sides
       const desiredWidth = vidH * targetAspect;
       srcX = (vidW - desiredWidth) / 2;
       srcW = desiredWidth;
@@ -156,51 +190,71 @@ const Camera: React.FC = () => {
     setIsTakingPhotos(false);
   };
 
-  /****************************************************************
-   * 5) Generate PDF with each photo scaled to 200×150 inside PDF *
-   ****************************************************************/
+  /*****************************************************************************************
+   * 5) Generate PDF with each photo 200×150, plus an "ily.png" image at the bottom (20px) *
+   *****************************************************************************************/
   const generatePdf = async () => {
     if (photos.length !== 3) return;
 
+    // If the bottom image hasn't loaded, you can skip or handle gracefully
+    if (!bottomImageUrl) {
+      console.error("Bottom image not loaded yet. PDF will be missing it.");
+    }
+
     /**
-     * We want:
-     * - Each photo: 200×150 px in the PDF
-     * - 20 px margin left/right → total width = 240 px
-     * - 20 px gap between photos (2 gaps for 3 photos => 40 px total)
-     * - 90 px space at bottom
-     * - total PDF height = 3×150 + 2×20 + 90 = 580 px
+     * We want a final PDF size of 240×600 px:
+     *   - 240 px wide (200 + 20 px margins on each side).
+     *   - 600 px tall total.
+     *
+     * We'll place:
+     *   1) Photo 1 at y=20
+     *   2) Photo 2 at y=190 (that's 20 + 150 + 20)
+     *   3) Photo 3 at y=360 (190 + 150 + 20)
+     *   => 3rd photo ends at 360 + 150 = 510
+     *   => Then 20 px gap => y=530
+     *   => "ily.png" goes at y=530, let's assume 200 px wide x 50 px tall
+     *   => That means it ends at 580, leaving 20 px bottom margin (total 600)
      */
     const pdfWidthPx = 240;
     const pdfHeightPx = 600;
 
-    // Create jsPDF doc
     const doc = new jsPDF({
       unit: "mm",
       format: [pxToMm(pdfWidthPx), pxToMm(pdfHeightPx)],
     });
 
-    // X = 20 px from left for each photo
-    const xPosPx = 20;
+    const xPosPx = 20; // left margin
+    const photoWidth = 200;
+    const photoHeight = 150;
+    const positionsY = [20, 190, 360]; // vertical placements for each photo
 
-    // Y positions for each photo:
-    // 1st photo at y=0
-    // 2nd photo at y=150 + 20 = 170
-    // 3rd photo at y=170 + 150 + 20 = 340
-    const positionsY = [20, 190, 360];
-
-    // Add images to PDF
+    // Insert the 3 photos
     photos.forEach((photo, i) => {
       doc.addImage(
         photo,
         "PNG",
         pxToMm(xPosPx),
         pxToMm(positionsY[i]),
-        pxToMm(200), // scaled width
-        pxToMm(150) // scaled height
+        pxToMm(photoWidth),
+        pxToMm(photoHeight)
       );
     });
 
-    // Convert doc to Blob for download
+    // Now add the bottom image (ily.png) if loaded
+    // Let's place it at (20, 530), 200×50 px
+    const bottomImgY = 530;
+    if (bottomImageUrl) {
+      doc.addImage(
+        bottomImageUrl,
+        "PNG",
+        pxToMm(xPosPx),
+        pxToMm(bottomImgY),
+        pxToMm(200), // 200 wide
+        pxToMm(50) // 50 tall
+      );
+    }
+
+    // Output
     const blob = doc.output("blob");
     setPdfUrl(URL.createObjectURL(blob));
   };
@@ -228,7 +282,7 @@ const Camera: React.FC = () => {
       <h2 className="text-pink-300 mt-6">Camera Preview</h2>
       {/* 
         4:3 container, max-w=300 for mobile. 
-        aspect-[4/3] ensures we keep the ratio while responsive.
+        aspect-[4/3] ensures we keep ratio while responsive.
       */}
       <div className="relative w-full max-w-[300px] aspect-[4/3] overflow-hidden border border-gray-300">
         <video
