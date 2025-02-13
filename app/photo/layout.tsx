@@ -15,7 +15,7 @@ export default function PhotoLayout({
   children: React.ReactNode;
 }) {
   return (
-    <body className="relative">
+    <body className="relative overflow-hidden">
       <Background>
         <div className="relative z-20 flex px-5 flex-col items-center">
           <header className="w-full">
