@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
+import Image from "next/image";
 
 interface BackgroundProps {
   children: React.ReactNode;
@@ -16,24 +17,34 @@ interface BalloonItem {
 const Balloon: React.FC<BalloonItem> = ({ left, delay, duration }) => {
   // Randomly choose one of the three images on mount.
   const randomImage = useMemo(() => {
-    const images = ["/Baloons1.png", "/Baloons2.png", "/Baloons3.png"];
+    const images = [
+      "https://astarunov.github.io/photobooth/Baloons1.png",
+      "https://astarunov.github.io/photobooth/Baloons2.png",
+      "https://astarunov.github.io/photobooth/Baloons3.png",
+    ];
     return images[Math.floor(Math.random() * images.length)];
   }, []);
 
   return (
-    <motion.img
-      src={randomImage}
-      alt="balloon"
-      className="absolute"
+    <motion.div
       initial={{ bottom: "150%", opacity: 0.5 }}
       animate={{ bottom: -100, opacity: 1 }}
       transition={{ delay, duration, ease: "linear" }}
+      className="absolute"
       style={{
         left: `${left}%`,
         width: "200px", // Adjust size as needed
-        height: "auto",
+        height: "200px", // Fixed height for demonstration; adjust as needed
       }}
-    />
+    >
+      <Image
+        src={randomImage}
+        alt="balloon"
+        width={200}
+        height={200}
+        style={{ objectFit: "contain" }}
+      />
+    </motion.div>
   );
 };
 
