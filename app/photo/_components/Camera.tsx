@@ -232,7 +232,7 @@ const Camera: React.FC = () => {
   return (
     <div className="flex flex-col items-center">
       <h2 className="text-pink-300 mt-6">Camera Preview</h2>
-      <div className="relative inline-block overflow-hidden border border-gray-300 w-[400px] h-[225px] md:w-[600px] md:h-[400px]">
+      <div className="relative inline-block px-4 overflow-hidden border border-gray-300 w-[400px] h-[225px] md:w-[600px] md:h-[400px]">
         <video
           ref={videoRef}
           autoPlay
