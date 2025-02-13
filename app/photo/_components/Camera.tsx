@@ -74,7 +74,6 @@ const Camera: React.FC = () => {
     // Decide final container size
     const TARGET_WIDTH = isDesktop ? 600 : 400;
     const TARGET_HEIGHT = isDesktop ? 400 : 225;
-
     const targetAspect = TARGET_WIDTH / TARGET_HEIGHT;
 
     const vidW = video.videoWidth;
@@ -219,7 +218,8 @@ const Camera: React.FC = () => {
     if (photos.length === 3 && !pdfUrl) {
       generatePdf();
     }
-  }, [photos]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos]);
 
   const retakePhotos = () => {
     setPhotos([]);
@@ -232,18 +232,7 @@ const Camera: React.FC = () => {
   return (
     <div className="flex flex-col items-center">
       <h2 className="text-pink-300 mt-6">Camera Preview</h2>
-
-      {/* Responsive container */}
-      <div
-        className="
-          relative
-          inline-block
-          overflow-hidden
-          border border-gray-300
-          w-[400px] h-[225px]
-          md:w-[600px] md:h-[400px]
-        "
-      >
+      <div className="relative inline-block overflow-hidden border border-gray-300 w-[400px] h-[225px] md:w-[600px] md:h-[400px]">
         <video
           ref={videoRef}
           autoPlay
@@ -296,7 +285,6 @@ const Camera: React.FC = () => {
                 key={idx}
                 src={photo}
                 alt={`Captured ${idx + 1}`}
-                // 1/4 size of container for thumbnails
                 className="w-[100px] h-[56.25px] md:w-[150px] md:h-[100px] object-cover"
               />
             ))}
