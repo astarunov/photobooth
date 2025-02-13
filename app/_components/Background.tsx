@@ -18,7 +18,11 @@ const Balloon: React.FC<BalloonItem> = ({ left, delay, duration }) => {
   // Randomly choose one of the three images on mount.
   const randomImage = useMemo(() => {
     //https://astarunov.github.io/photobooth/
-    const images = ["/Baloons1.png", "/Baloons2.png", "/Baloons3.png"];
+    const images = [
+      "https://astarunov.github.io/photobooth/Baloons1.png",
+      "https://astarunov.github.io/photobooth/Baloons2.png",
+      "https://astarunov.github.io/photobooth/Baloons3.png",
+    ];
     return images[Math.floor(Math.random() * images.length)];
   }, []);
 
