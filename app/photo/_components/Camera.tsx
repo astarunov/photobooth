@@ -1,5 +1,8 @@
+"use client";
+
 import React, { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
+import { useMediaQuery } from "@/app/hooks/useMediaQuery";
 
 const Camera: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -10,6 +13,9 @@ const Camera: React.FC = () => {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isTakingPhotos, setIsTakingPhotos] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  // Detect if we're at least md (768px) wide for desktop
+  const isDesktop = useMediaQuery("(min-width: 768px)");
 
   useEffect(() => {
     const handleLoadedData = () => {
@@ -26,10 +32,9 @@ const Camera: React.FC = () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            // Request a 4:3 aspect ratio (best effort)
-            aspectRatio: 4 / 3,
-            width: { ideal: 1280 }, // optional
-            height: { ideal: 960 }, // optional
+            aspectRatio: 4 / 3, // best effort
+            width: { ideal: 1280 },
+            height: { ideal: 960 },
           },
         });
         mediaStreamRef.current = stream;
@@ -56,9 +61,8 @@ const Camera: React.FC = () => {
   }, []);
 
   /**
-   * Capture a photo from the video feed at exactly 600×450.
-   * We compare the video's aspect ratio vs. 600/450 (1.3333).
-   * Then crop from sides or top/bottom so the final image is 600×450.
+   * Capture a photo from the video feed at either 400×225 (mobile) or 600×400 (desktop).
+   * We'll check `isDesktop` to decide final width & height for the capture.
    */
   const capturePhoto = (): string | null => {
     if (!videoRef.current || !canvasRef.current) return null;
@@ -67,16 +71,17 @@ const Camera: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    // Desired final dimensions
-    const TARGET_WIDTH = 600;
-    const TARGET_HEIGHT = 450;
-    const targetAspect = TARGET_WIDTH / TARGET_HEIGHT; // = 1.3333
+    // Decide final container size
+    const TARGET_WIDTH = isDesktop ? 600 : 400;
+    const TARGET_HEIGHT = isDesktop ? 400 : 225;
+
+    const targetAspect = TARGET_WIDTH / TARGET_HEIGHT;
 
     const vidW = video.videoWidth;
     const vidH = video.videoHeight;
     const videoAspect = vidW / vidH;
 
-    // Set the canvas to 600x450
+    // Set canvas to final size
     canvas.width = TARGET_WIDTH;
     canvas.height = TARGET_HEIGHT;
 
@@ -86,19 +91,18 @@ const Camera: React.FC = () => {
     let srcH = vidH;
 
     if (videoAspect > targetAspect) {
-      // Video is relatively wider than 4:3, so crop the left/right
-      // We want the height to match exactly, so scale width
-      const desiredWidth = vidH * targetAspect; // how wide we need for 4:3
+      // Video is relatively wider, crop sides
+      const desiredWidth = vidH * targetAspect;
       srcX = (vidW - desiredWidth) / 2;
       srcW = desiredWidth;
     } else if (videoAspect < targetAspect) {
-      // Video is relatively taller than 4:3, so crop top/bottom
+      // Video is relatively taller, crop top/bottom
       const desiredHeight = vidW / targetAspect;
       srcY = (vidH - desiredHeight) / 2;
       srcH = desiredHeight;
     }
 
-    // Draw the cropped region of the video onto the 600×450 canvas
+    // Draw cropped region
     ctx.drawImage(
       video,
       srcX,
@@ -110,11 +114,10 @@ const Camera: React.FC = () => {
       TARGET_WIDTH,
       TARGET_HEIGHT
     );
-
     return canvas.toDataURL("image/png");
   };
 
-  // Countdown logic: returns a promise that resolves after 3...2...1
+  // 3...2...1 countdown
   const runCountdown = () => {
     return new Promise<void>((resolve) => {
       let count = 3;
@@ -132,7 +135,7 @@ const Camera: React.FC = () => {
     });
   };
 
-  // Take 3 photos in sequence, each preceded by a countdown
+  // Capture 3 photos in a row
   const takePhotosWithCountdown = async () => {
     if (isTakingPhotos) return;
     setIsTakingPhotos(true);
@@ -145,25 +148,25 @@ const Camera: React.FC = () => {
       if (dataUrl) {
         setPhotos((prev) => [...prev, dataUrl]);
       }
-      // small delay
       await new Promise((r) => setTimeout(r, 500));
     }
     setIsTakingPhotos(false);
   };
 
   /**
-   * Generate a PDF with each photo scaled down to 40% (scaleFactor = 0.4).
-   * Each image is placed vertically.
+   * Generate PDF:
+   *  - scaleFactor = 0.3 if desktop, else 0.6
+   *  - images placed vertically
    */
   const generatePdf = async () => {
     if (photos.length !== 3) return;
 
-    const scaleFactor = 0.3; // 40%
-    const conversionFactor = 0.264583; // px -> mm, approx for 96 DPI
+    const scaleFactor = isDesktop ? 0.3 : 0.6; // dynamic scaling
+    const conversionFactor = 0.264583; // px -> mm
     const marginH = 10;
     const marginV = 10;
 
-    // Load each image to get original dimensions
+    // Load each image
     const loadedImages = await Promise.all(
       photos.map(
         (dataUrl) =>
@@ -184,101 +187,79 @@ const Camera: React.FC = () => {
       )
     );
 
-    // Convert dimensions to mm and apply scaleFactor
+    // Convert to mm, scale accordingly
     const imageDimensions = loadedImages.map(({ data, width, height }) => {
       const wMM = width * conversionFactor * scaleFactor;
       const hMM = height * conversionFactor * scaleFactor;
       return { data, widthMM: wMM, heightMM: hMM };
     });
 
-    const additionalGap = imageDimensions[0].heightMM / 2; // extra white space
+    const additionalGap = imageDimensions[0].heightMM / 2;
     const maxWidthMM = Math.max(...imageDimensions.map((img) => img.widthMM));
-    const totalImageHeight = imageDimensions.reduce(
-      (sum, img) => sum + img.heightMM,
-      0
-    );
+    const totalHeight = imageDimensions.reduce((sum, i) => sum + i.heightMM, 0);
     const pageWidth = maxWidthMM + marginH * 2;
     const pageHeight =
-      totalImageHeight + marginV * (imageDimensions.length + 1) + additionalGap;
+      totalHeight + marginV * (imageDimensions.length + 1) + additionalGap;
 
-    // Create PDF
     const doc = new jsPDF({ unit: "mm", format: [pageWidth, pageHeight] });
 
     let currentY = marginV;
     for (const { data, widthMM, heightMM } of imageDimensions) {
-      const xPos = marginH + (maxWidthMM - widthMM) / 2; // center horizontally
+      const xPos = marginH + (maxWidthMM - widthMM) / 2;
       doc.addImage(data, "PNG", xPos, currentY, widthMM, heightMM);
       currentY += heightMM + marginV;
     }
 
     const blob = doc.output("blob");
-    const url = URL.createObjectURL(blob);
-    setPdfUrl(url);
+    setPdfUrl(URL.createObjectURL(blob));
   };
 
-  // Auto-generate PDF once we have 3 photos
+  // Whenever we have 3 photos, auto-generate PDF
   useEffect(() => {
     if (photos.length === 3 && !pdfUrl) {
       generatePdf();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photos]);
+  }, [photos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const retakePhotos = () => {
     setPhotos([]);
     setPdfUrl(null);
   };
 
+  // Container uses Tailwind responsive classes:
+  // default => 400×225
+  // md => 600×400
   return (
     <div className="flex flex-col items-center">
       <h2 className="text-pink-300 mt-6">Camera Preview</h2>
 
-      {/* Container for the live video (force 600×450 display) */}
+      {/* Responsive container */}
       <div
-        style={{
-          position: "relative",
-          display: "inline-block",
-          width: "600px",
-          height: "450px",
-          overflow: "hidden",
-          border: "1px solid #ccc",
-        }}
+        className="
+          relative
+          inline-block
+          overflow-hidden
+          border border-gray-300
+          w-[400px] h-[225px]
+          md:w-[600px] md:h-[400px]
+        "
       >
         <video
           ref={videoRef}
           autoPlay
           playsInline
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-          }}
+          className="w-full h-full object-cover"
         />
         {countdown !== null && (
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "100%",
-              background: "rgba(0,0,0,0.5)",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              fontSize: "4rem",
-              color: "white",
-            }}
-          >
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-4xl">
             {countdown}
           </div>
         )}
       </div>
 
-      {/* Photo-taking buttons / PDF link */}
-      <div style={{ margin: "20px 0" }}>
+      <div className="my-5 flex flex-col items-center">
         {pdfUrl ? (
-          <div className="flex flex-col items-center">
+          <>
             <a href={pdfUrl} download="photos.pdf">
               <button className="w-[10vw] min-w-[125px] h-10 rounded-[1.25rem] text-white bg-pink-200 flex items-center justify-center font-bold">
                 Download PDF
@@ -290,46 +271,39 @@ const Camera: React.FC = () => {
             >
               Retake Photos
             </button>
-          </div>
+          </>
         ) : (
           <button
-            className="w-[10vw] min-w-[125px] h-10 rounded-[1.25rem] border border-neutral-800 text-neutral-800 bg-white flex items-center justify-center font-bold"
             onClick={takePhotosWithCountdown}
             disabled={isTakingPhotos}
+            className="w-[10vw] min-w-[125px] h-10 rounded-[1.25rem] border border-neutral-800 text-neutral-800 bg-white flex items-center justify-center font-bold"
           >
             Take Photo
           </button>
         )}
       </div>
 
-      {/* Hidden canvas for capturing the image */}
+      {/* Hidden canvas */}
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
-      {/* Thumbnails of captured photos */}
+      {/* Thumbnails */}
       {photos.length > 0 && (
         <div className="flex flex-col items-center">
           <h3 className="text-xl text-pink-300">Captured Photos</h3>
-          <div
-            className="no-scrollbar overflow-x-auto"
-            style={{ display: "flex", gap: "10px", marginBottom: "8px" }}
-          >
-            {photos.map((photo, index) => (
+          <div className="no-scrollbar overflow-x-auto flex gap-2 my-3">
+            {photos.map((photo, idx) => (
               <img
-                key={index}
+                key={idx}
                 src={photo}
-                alt={`Captured ${index + 1}`}
-                style={{
-                  width: "150px",
-                  height: "112.5px",
-                  objectFit: "cover",
-                }}
+                alt={`Captured ${idx + 1}`}
+                // 1/4 size of container for thumbnails
+                className="w-[100px] h-[56.25px] md:w-[150px] md:h-[100px] object-cover"
               />
             ))}
           </div>
         </div>
       )}
 
-      {/* Hide scrollbars on mobile */}
       <style jsx>{`
         .no-scrollbar::-webkit-scrollbar {
           display: none;

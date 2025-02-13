@@ -17,7 +17,7 @@ export default function PhotoLayout({
   return (
     <body className="relative">
       <Background>
-        <div className="relative z-20 flex px-4 flex-col items-center">
+        <div className="relative z-20 flex px-5 flex-col items-center">
           <header className="w-full">
             <h1 className="text-4xl text-center mt-10">Photobooth</h1>
             {/* Render the Camera component only for /photo */}
