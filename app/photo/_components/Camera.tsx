@@ -72,8 +72,8 @@ const Camera: React.FC = () => {
     if (!ctx) return null;
 
     // Decide final container size
-    const TARGET_WIDTH = isDesktop ? 600 : 400;
-    const TARGET_HEIGHT = isDesktop ? 400 : 225;
+    const TARGET_WIDTH = isDesktop ? 600 : 450;
+    const TARGET_HEIGHT = isDesktop ? 300 : 225;
     const targetAspect = TARGET_WIDTH / TARGET_HEIGHT;
 
     const vidW = video.videoWidth;
@@ -232,7 +232,7 @@ const Camera: React.FC = () => {
   return (
     <div className="flex flex-col items-center">
       <h2 className="text-pink-300 mt-6">Camera Preview</h2>
-      <div className="relative inline-block px-4 overflow-hidden border border-gray-300 w-[400px] h-[225px] md:w-[600px] md:h-[400px]">
+      <div className="relative inline-block px-4 overflow-hidden border border-gray-300 w-[300px] h-[225px] md:w-[600px] md:h-[450px]">
         <video
           ref={videoRef}
           autoPlay
