@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Background from "@/app/_components/Background";
 
-const basePath = process.env.NODE_ENV === "production" ? "/photobooth" : "";
+const basePath =
+  process.env.NODE_ENV === "production"
+    ? "/https://astarunov.github.io/photobooth/"
+    : "";
 
 export const metadata: Metadata = {
   title: "Photobooth",
