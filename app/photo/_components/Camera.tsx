@@ -320,7 +320,7 @@ const Camera: React.FC = () => {
             disabled={isTakingPhotos}
             className="w-[10vw] min-w-[125px] h-10 rounded-[1.25rem] border border-neutral-800 text-neutral-800 bg-white flex items-center justify-center font-bold"
           >
-            Take Photo
+            Take a Photo
           </button>
         )}
       </div>
