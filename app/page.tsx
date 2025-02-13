@@ -7,7 +7,7 @@ export default function Home() {
       <p className="text-sm max-w-[50vw] text-center mb-20">
         Capture the moment, cherish the magic, relive the love
       </p>
-      <Button link="/photo" text="START" />
+      <Button link="/welcome" text="START" />
       <p className="absolute bottom-10 text-base">
         {" "}
         made by Artem <span className="text-pink-300">with love</span>{" "}

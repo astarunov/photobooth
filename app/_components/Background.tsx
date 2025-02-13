@@ -17,6 +17,7 @@ interface BalloonItem {
 const Balloon: React.FC<BalloonItem> = ({ left, delay, duration }) => {
   // Randomly choose one of the three images on mount.
   const randomImage = useMemo(() => {
+    //https://astarunov.github.io/photobooth/
     const images = [
       "https://astarunov.github.io/photobooth/Baloons1.png",
       "https://astarunov.github.io/photobooth/Baloons2.png",

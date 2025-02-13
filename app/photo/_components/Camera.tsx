@@ -25,7 +25,12 @@ const Camera: React.FC = () => {
     const initCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: {
+            // Request a 4:3 aspect ratio (best effort)
+            aspectRatio: 4 / 3,
+            width: { ideal: 1280 }, // optional
+            height: { ideal: 960 }, // optional
+          },
         });
         mediaStreamRef.current = stream;
         if (videoRef.current) {
@@ -50,22 +55,66 @@ const Camera: React.FC = () => {
     };
   }, []);
 
-  // Capture a photo from the video feed using a hidden canvas
+  /**
+   * Capture a photo from the video feed at exactly 600×450.
+   * We compare the video's aspect ratio vs. 600/450 (1.3333).
+   * Then crop from sides or top/bottom so the final image is 600×450.
+   */
   const capturePhoto = (): string | null => {
     if (!videoRef.current || !canvasRef.current) return null;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext("2d");
-    if (context) {
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL("image/png");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    // Desired final dimensions
+    const TARGET_WIDTH = 600;
+    const TARGET_HEIGHT = 450;
+    const targetAspect = TARGET_WIDTH / TARGET_HEIGHT; // = 1.3333
+
+    const vidW = video.videoWidth;
+    const vidH = video.videoHeight;
+    const videoAspect = vidW / vidH;
+
+    // Set the canvas to 600x450
+    canvas.width = TARGET_WIDTH;
+    canvas.height = TARGET_HEIGHT;
+
+    let srcX = 0;
+    let srcY = 0;
+    let srcW = vidW;
+    let srcH = vidH;
+
+    if (videoAspect > targetAspect) {
+      // Video is relatively wider than 4:3, so crop the left/right
+      // We want the height to match exactly, so scale width
+      const desiredWidth = vidH * targetAspect; // how wide we need for 4:3
+      srcX = (vidW - desiredWidth) / 2;
+      srcW = desiredWidth;
+    } else if (videoAspect < targetAspect) {
+      // Video is relatively taller than 4:3, so crop top/bottom
+      const desiredHeight = vidW / targetAspect;
+      srcY = (vidH - desiredHeight) / 2;
+      srcH = desiredHeight;
     }
-    return null;
+
+    // Draw the cropped region of the video onto the 600×450 canvas
+    ctx.drawImage(
+      video,
+      srcX,
+      srcY,
+      srcW,
+      srcH,
+      0,
+      0,
+      TARGET_WIDTH,
+      TARGET_HEIGHT
+    );
+
+    return canvas.toDataURL("image/png");
   };
 
-  // Returns a promise that resolves after a countdown from 3 to 1
+  // Countdown logic: returns a promise that resolves after 3...2...1
   const runCountdown = () => {
     return new Promise<void>((resolve) => {
       let count = 3;
@@ -83,97 +132,91 @@ const Camera: React.FC = () => {
     });
   };
 
-  // Loop through 3 iterations, running the countdown before each photo capture
+  // Take 3 photos in sequence, each preceded by a countdown
   const takePhotosWithCountdown = async () => {
     if (isTakingPhotos) return;
     setIsTakingPhotos(true);
-    setPhotos([]); // Clear previous photos if needed
-    setPdfUrl(null); // Clear any previous PDF
+    setPhotos([]);
+    setPdfUrl(null);
 
     for (let i = 0; i < 3; i++) {
       await runCountdown();
-      const photoData = capturePhoto();
-      if (photoData) {
-        setPhotos((prev) => [...prev, photoData]);
+      const dataUrl = capturePhoto();
+      if (dataUrl) {
+        setPhotos((prev) => [...prev, dataUrl]);
       }
-      // Small delay after capture before starting next countdown
+      // small delay
       await new Promise((r) => setTimeout(r, 500));
     }
     setIsTakingPhotos(false);
   };
 
-  // Generate a PDF with 3 photos arranged vertically on one page.
-  // All images are scaled uniformly by a factor (0.5) to be about 2 times smaller.
-  // A white gap at the bottom equal to 1/2 of the first photo's height is added.
+  /**
+   * Generate a PDF with each photo scaled down to 40% (scaleFactor = 0.4).
+   * Each image is placed vertically.
+   */
   const generatePdf = async () => {
     if (photos.length !== 3) return;
 
-    const conversionFactor = 0.264583; // px to mm conversion (approx. for 96 DPI)
-    const scaleFactor = 0.5; // scale images to 50% of their converted size
-    const marginH = 10; // horizontal margin in mm
-    const marginV = 10; // vertical margin in mm
+    const scaleFactor = 0.3; // 40%
+    const conversionFactor = 0.264583; // px -> mm, approx for 96 DPI
+    const marginH = 10;
+    const marginV = 10;
 
-    // Load each photo to get its natural dimensions (in pixels)
+    // Load each image to get original dimensions
     const loadedImages = await Promise.all(
       photos.map(
-        (photoData) =>
+        (dataUrl) =>
           new Promise<{ data: string; width: number; height: number }>(
             (resolve, reject) => {
               const img = new Image();
               img.onload = () => {
                 resolve({
-                  data: photoData,
+                  data: dataUrl,
                   width: img.naturalWidth,
                   height: img.naturalHeight,
                 });
               };
               img.onerror = (err) => reject(err);
-              img.src = photoData;
+              img.src = dataUrl;
             }
           )
       )
     );
 
-    // Convert dimensions from pixels to mm and apply uniform scaling
+    // Convert dimensions to mm and apply scaleFactor
     const imageDimensions = loadedImages.map(({ data, width, height }) => {
-      const imgWidthMM = width * conversionFactor * scaleFactor;
-      const imgHeightMM = height * conversionFactor * scaleFactor;
-      return { data, widthMM: imgWidthMM, heightMM: imgHeightMM };
+      const wMM = width * conversionFactor * scaleFactor;
+      const hMM = height * conversionFactor * scaleFactor;
+      return { data, widthMM: wMM, heightMM: hMM };
     });
 
-    // Calculate additional white gap at the bottom: 1/2 of the first photo's height
-    const additionalGap = imageDimensions[0].heightMM / 2;
-
-    // Determine PDF page dimensions:
-    // Page width: the maximum image width plus horizontal margins.
-    // Page height: the sum of all image heights + vertical margins (top, between images, bottom) + the additional gap.
+    const additionalGap = imageDimensions[0].heightMM / 2; // extra white space
     const maxWidthMM = Math.max(...imageDimensions.map((img) => img.widthMM));
     const totalImageHeight = imageDimensions.reduce(
-      (acc, curr) => acc + curr.heightMM,
+      (sum, img) => sum + img.heightMM,
       0
     );
     const pageWidth = maxWidthMM + marginH * 2;
     const pageHeight =
       totalImageHeight + marginV * (imageDimensions.length + 1) + additionalGap;
 
+    // Create PDF
     const doc = new jsPDF({ unit: "mm", format: [pageWidth, pageHeight] });
 
-    // Place images one below the other
     let currentY = marginV;
-    imageDimensions.forEach(({ data, widthMM, heightMM }) => {
-      // Center the image horizontally if its width is less than maxWidthMM.
-      const xPos = marginH + (maxWidthMM - widthMM) / 2;
+    for (const { data, widthMM, heightMM } of imageDimensions) {
+      const xPos = marginH + (maxWidthMM - widthMM) / 2; // center horizontally
       doc.addImage(data, "PNG", xPos, currentY, widthMM, heightMM);
       currentY += heightMM + marginV;
-    });
+    }
 
-    // The bottom gap remains white (PDF background is white by default)
-    const pdfBlob = doc.output("blob");
-    const url = URL.createObjectURL(pdfBlob);
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
     setPdfUrl(url);
   };
 
-  // When the photos array updates, generate the PDF if we have 3 photos.
+  // Auto-generate PDF once we have 3 photos
   useEffect(() => {
     if (photos.length === 3 && !pdfUrl) {
       generatePdf();
@@ -181,7 +224,6 @@ const Camera: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photos]);
 
-  // Reset state to allow retaking photos
   const retakePhotos = () => {
     setPhotos([]);
     setPdfUrl(null);
@@ -190,16 +232,26 @@ const Camera: React.FC = () => {
   return (
     <div className="flex flex-col items-center">
       <h2 className="text-pink-300 mt-6">Camera Preview</h2>
-      {/* Video container with countdown overlay */}
-      <div style={{ position: "relative", display: "inline-block" }}>
+
+      {/* Container for the live video (force 600×450 display) */}
+      <div
+        style={{
+          position: "relative",
+          display: "inline-block",
+          width: "600px",
+          height: "450px",
+          overflow: "hidden",
+          border: "1px solid #ccc",
+        }}
+      >
         <video
           ref={videoRef}
           autoPlay
           playsInline
           style={{
             width: "100%",
-            maxWidth: "600px",
-            border: "1px solid #ccc",
+            height: "100%",
+            objectFit: "cover",
           }}
         />
         {countdown !== null && (
@@ -222,24 +274,26 @@ const Camera: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Photo-taking buttons / PDF link */}
       <div style={{ margin: "20px 0" }}>
         {pdfUrl ? (
           <div className="flex flex-col items-center">
             <a href={pdfUrl} download="photos.pdf">
-              <button className="w-[10vw] min-w-[125px] h-10 rounded-[1.25rem]  text-white bg-pink-200 flex items-center justify-center font-bold">
+              <button className="w-[10vw] min-w-[125px] h-10 rounded-[1.25rem] text-white bg-pink-200 flex items-center justify-center font-bold">
                 Download PDF
               </button>
             </a>
             <button
               onClick={retakePhotos}
-              className="w-[10vw] h-10 min-w-[125px] mt-4 rounded-[1.25rem] border border-neutral-800 text-neutral-800 bg-white flex items-center justify-center font-bold"
+              className="w-[10vw] min-w-[125px] h-10 mt-4 rounded-[1.25rem] border border-neutral-800 text-neutral-800 bg-white flex items-center justify-center font-bold"
             >
               Retake Photos
             </button>
           </div>
         ) : (
           <button
-            className="w-[10vw] h-10 min-w-[125px] rounded-[1.25rem] border border-neutral-800 text-neutral-800 bg-white flex items-center justify-center font-bold"
+            className="w-[10vw] min-w-[125px] h-10 rounded-[1.25rem] border border-neutral-800 text-neutral-800 bg-white flex items-center justify-center font-bold"
             onClick={takePhotosWithCountdown}
             disabled={isTakingPhotos}
           >
@@ -247,12 +301,14 @@ const Camera: React.FC = () => {
           </button>
         )}
       </div>
-      {/* Hidden canvas used for capturing the image */}
+
+      {/* Hidden canvas for capturing the image */}
       <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      {/* Thumbnails of captured photos */}
       {photos.length > 0 && (
         <div className="flex flex-col items-center">
           <h3 className="text-xl text-pink-300">Captured Photos</h3>
-          {/* Scrollable container for photos on mobile, scrollbar hidden */}
           <div
             className="no-scrollbar overflow-x-auto"
             style={{ display: "flex", gap: "10px", marginBottom: "8px" }}
@@ -262,12 +318,18 @@ const Camera: React.FC = () => {
                 key={index}
                 src={photo}
                 alt={`Captured ${index + 1}`}
-                style={{ width: "200px" }}
+                style={{
+                  width: "150px",
+                  height: "112.5px",
+                  objectFit: "cover",
+                }}
               />
             ))}
           </div>
         </div>
       )}
+
+      {/* Hide scrollbars on mobile */}
       <style jsx>{`
         .no-scrollbar::-webkit-scrollbar {
           display: none;
