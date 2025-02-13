@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Background from "@/app/_components/Background";
 
+const basePath = process.env.NODE_ENV === "production" ? "/photobooth" : "";
+
 export const metadata: Metadata = {
   title: "Photobooth",
   description: "Capture the moment",
   icons: {
-    icon: "/favicons/favicon.ico",
+    icon: `${basePath}/favicons/favicon.ico`,
   },
 };
 
